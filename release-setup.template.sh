@@ -78,7 +78,9 @@ source="$workdir/uulink-agent"
 for path in install.sh upgrade.sh files/etc/init.d/uulink \
             files/usr/libexec/uulink/sampler.uc \
             files/usr/share/rpcd/acl.d/uulink.json \
-            files/usr/share/rpcd/ucode/uulink.uc; do
+            files/usr/share/rpcd/ucode/uulink.uc \
+            files/usr/share/luci/menu.d/luci-app-uulink.json \
+            files/www/luci-static/resources/view/uulink/index.js; do
     if [ ! -f "$source/$path" ] || [ -L "$source/$path" ]; then
         echo "Required bundle file is missing: $path" >&2
         exit 1
@@ -110,11 +112,19 @@ for path in /etc/init.d/uulink /usr/libexec/uulink/sampler.uc \
         existing=$((existing + 1))
     fi
 done
+ui_existing=0
+for path in /usr/share/luci/menu.d/luci-app-uulink.json \
+            /www/luci-static/resources/view/uulink/index.js; do
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        ui_existing=$((ui_existing + 1))
+    fi
+done
 
-if [ "$existing" -eq 0 ] && ! ubus list | grep -qx uulink; then
+if [ "$existing" -eq 0 ] && [ "$ui_existing" -eq 0 ] && ! ubus list | grep -qx uulink; then
     echo 'Installing UULink agent...'
     sh "$source/install.sh"
-elif [ "$existing" -eq 4 ] && ubus list | grep -qx uulink; then
+elif [ "$existing" -eq 4 ] && { [ "$ui_existing" -eq 0 ] || [ "$ui_existing" -eq 2 ]; } &&
+     ubus list | grep -qx uulink; then
     echo 'Checking or upgrading the installed UULink agent...'
     sh "$source/upgrade.sh"
 else

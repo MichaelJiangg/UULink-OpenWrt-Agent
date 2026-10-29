@@ -37,11 +37,8 @@ function cachedSnapshot() {
     return { schema: 1, available: false };
 }
 
-function onDemandDetails(status) {
-    if (type(status) != 'object' || type(status.info) != 'object')
-        return { schema: 1, available: false };
-
-    let source = type(status.info.wifi) == 'object' ? status.info.wifi : {};
+function sanitizedWifi(source) {
+    source = type(source) == 'object' ? source : {};
     let wifi = {};
     let count = source.clients_n;
     if ((type(count) == 'int' || type(count) == 'double') && count >= 0 && count <= 4096)
@@ -62,6 +59,47 @@ function onDemandDetails(status) {
         }
         wifi.clients = clients;
     }
+    return wifi;
+}
+
+function sanitizedLan(source) {
+    let lan = {};
+    if (type(source) != 'object' || type(source.list) != 'array')
+        return lan;
+    let leases = [];
+    for (let entry in source.list) {
+        if (length(leases) >= 256)
+            break;
+        if (type(entry) != 'object' || type(entry.ip) != 'string' ||
+            length(entry.ip) == 0 || length(entry.ip) > 64)
+            continue;
+        let left = entry.left;
+        if ((type(left) == 'int' || type(left) == 'double') && left <= 0)
+            continue;
+        let lease = { ip: entry.ip };
+        if (type(entry.host) == 'string' && length(entry.host) > 0 && length(entry.host) <= 128)
+            lease.host = entry.host;
+        push(leases, lease);
+    }
+    lan.list = leases;
+    return lan;
+}
+
+function onDemandClients(status) {
+    if (type(status) != 'object' || type(status.info) != 'object')
+        return { schema: 1, available: false };
+    let wifi = sanitizedWifi(status.info.wifi);
+    if (type(wifi.clients) != 'array')
+        wifi.clients = [];
+    return { schema: 1, available: true, wifi: wifi, lan: sanitizedLan(status.info.lan) };
+}
+
+function onDemandDetails(status) {
+    if (type(status) != 'object' || type(status.info) != 'object')
+        return { schema: 1, available: false };
+
+    let wifi = sanitizedWifi(status.info.wifi);
+    let lan = sanitizedLan(status.info.lan);
 
     let cell = type(status.cell) == 'object' ? status.cell : {};
     let sourceIdent = cell.error == null && type(cell.ident) == 'object' ? cell.ident : {};
@@ -74,7 +112,7 @@ function onDemandDetails(status) {
     if (sourceIdent.slot == 0 || sourceIdent.slot == 1)
         ident.slot = sourceIdent.slot;
 
-    return { schema: 1, available: true, info: { wifi: wifi }, cell: { ident: ident } };
+    return { schema: 1, available: true, info: { wifi: wifi, lan: lan }, cell: { ident: ident } };
 }
 
 let detailBus = null;
@@ -95,6 +133,24 @@ return {
                         return { schema: 1, available: false };
                     let pending = detailBus.defer('mu300dash', 'status', {}, function(code, status) {
                         request.reply(code == 0 ? onDemandDetails(status) : { schema: 1, available: false });
+                    });
+                    if (pending)
+                        return pending;
+                } catch (error) {
+                    detailBus = null;
+                }
+                return { schema: 1, available: false };
+            }
+        },
+        clients: {
+            call: function(request) {
+                try {
+                    if (!detailBus)
+                        detailBus = connect();
+                    if (!detailBus)
+                        return { schema: 1, available: false };
+                    let pending = detailBus.defer('mu300dash', 'status', {}, function(code, status) {
+                        request.reply(code == 0 ? onDemandClients(status) : { schema: 1, available: false });
                     });
                     if (pending)
                         return pending;

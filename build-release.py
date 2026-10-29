@@ -12,7 +12,6 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parent
 FILES = (
-    "README.md",
     "LICENSE",
     "install.sh",
     "upgrade.sh",
@@ -20,6 +19,8 @@ FILES = (
     "files/usr/libexec/uulink/sampler.uc",
     "files/usr/share/rpcd/acl.d/uulink.json",
     "files/usr/share/rpcd/ucode/uulink.uc",
+    "files/usr/share/luci/menu.d/luci-app-uulink.json",
+    "files/www/luci-static/resources/view/uulink/index.js",
 )
 
 

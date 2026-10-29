@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import subprocess
 import tarfile
@@ -13,11 +14,10 @@ from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 BUILDER = AGENT_DIR / "build-release.py"
-VERSION = "v0.1.0-rc.1"
+VERSION = "v0.2.0-rc.1"
 REPO = "MichaelJiangg/UULink-OpenWrt-Agent"
 ARCHIVE_NAME = f"uulink-agent-{VERSION}.tar.gz"
 EXPECTED_FILES = {
-    "uulink-agent/README.md",
     "uulink-agent/LICENSE",
     "uulink-agent/install.sh",
     "uulink-agent/upgrade.sh",
@@ -25,6 +25,8 @@ EXPECTED_FILES = {
     "uulink-agent/files/usr/libexec/uulink/sampler.uc",
     "uulink-agent/files/usr/share/rpcd/acl.d/uulink.json",
     "uulink-agent/files/usr/share/rpcd/ucode/uulink.uc",
+    "uulink-agent/files/usr/share/luci/menu.d/luci-app-uulink.json",
+    "uulink-agent/files/www/luci-static/resources/view/uulink/index.js",
 }
 SHELL_FILES = {
     "uulink-agent/install.sh",
@@ -92,6 +94,14 @@ class ReleaseArtifactTests(unittest.TestCase):
                     files.add(name)
             self.assertEqual(files, EXPECTED_FILES)
 
+    def test_release_acl_exposes_read_only_clients(self) -> None:
+        with tarfile.open(self.outputs[0] / ARCHIVE_NAME, "r:gz") as archive:
+            stream = archive.extractfile("uulink-agent/files/usr/share/rpcd/acl.d/uulink.json")
+            self.assertIsNotNone(stream)
+            acl = json.load(stream)["uulink-agent"]
+        self.assertEqual(set(acl["read"]["ubus"]["uulink"]), {"snapshot", "details", "clients"})
+        self.assertFalse(acl.get("write"))
+
     def test_checksum_manifest_matches_archive(self) -> None:
         output = self.outputs[0]
         entries = {}
@@ -130,6 +140,34 @@ class ReleaseArtifactTests(unittest.TestCase):
             timeout=30,
         )
         self.assertNotEqual(invalid.returncode, 0)
+
+    def test_verify_only_requires_the_luci_page(self) -> None:
+        output = self.outputs[0]
+        original = output / ARCHIVE_NAME
+        setup = (output / "setup.sh").read_text(encoding="utf-8")
+        old_digest = hashlib.sha256(original.read_bytes()).hexdigest()
+        self.assertIn(old_digest, setup)
+        for missing_name in (
+            "uulink-agent/files/usr/share/luci/menu.d/luci-app-uulink.json",
+            "uulink-agent/files/www/luci-static/resources/view/uulink/index.js",
+        ):
+            with self.subTest(missing_name=missing_name):
+                missing_path = Path(self.scratch.name) / f"missing-{Path(missing_name).name}.tar.gz"
+                with tarfile.open(original, "r:gz") as source, tarfile.open(missing_path, "w:gz") as target:
+                    for member in source.getmembers():
+                        if member.name != missing_name:
+                            target.addfile(member, source.extractfile(member) if member.isfile() else None)
+                new_digest = hashlib.sha256(missing_path.read_bytes()).hexdigest()
+                test_setup = Path(self.scratch.name) / f"setup-missing-{Path(missing_name).name}.sh"
+                test_setup.write_text(setup.replace(old_digest, new_digest), encoding="utf-8")
+                checked = subprocess.run(
+                    ["sh", str(test_setup), "--verify-only", str(missing_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(checked.returncode, 0)
+                self.assertIn(f"Required bundle file is missing: {missing_name.removeprefix('uulink-agent/')}", checked.stderr)
 
     def test_release_shell_scripts_have_valid_syntax(self) -> None:
         setup = subprocess.run(

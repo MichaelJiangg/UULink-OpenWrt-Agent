@@ -38,6 +38,24 @@ function radio(value) {
     return result;
 }
 
+function wifiSummary(value) {
+    let source = type(value) == 'object' ? value : {};
+    let result = {};
+    if (source.up == 0 || source.up == 1)
+        result.up = source.up;
+    if (type(source.ssid) == 'string' && length(source.ssid) <= 128)
+        result.ssid = source.ssid;
+    for (let field in ['channel', 'band', 'width']) {
+        let item = source[field];
+        if (type(item) == 'string' && length(item) <= 32)
+            result[field] = item;
+    }
+    let count = source.clients_n;
+    if ((type(count) == 'int' || type(count) == 'double') && count >= 0 && count <= 4096)
+        result.clients_n = count;
+    return result;
+}
+
 function sanitize(value) {
     if (type(value) != 'object' || type(value.info) != 'object')
         return null;
@@ -45,7 +63,7 @@ function sanitize(value) {
     info.power = pick(value.info.power, ['present', 'capacity', 'status', 'ua', 'usb']);
     info.traffic = pick(value.info.traffic, ['today', 'used']);
     info.temps = pick(value.info.temps, ['soc', 'cpu']);
-    info.wifi = pick(value.info.wifi, ['clients_n']);
+    info.wifi = wifiSummary(value.info.wifi);
     let cell = radio(value.cell);
     cell.ident = pick(type(value.cell) == 'object' ? value.cell.ident : null, ['fw']);
     return {

@@ -1,0 +1,13 @@
+{
+  "admin/services/uulink": {
+    "title": "UULink",
+    "order": 45,
+    "action": {
+      "type": "view",
+      "path": "uulink/index"
+    },
+    "depends": {
+      "acl": ["uulink-agent"]
+    }
+  }
+}
