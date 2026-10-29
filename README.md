@@ -19,9 +19,19 @@ The validated target is U30 Air OpenWrt. The installer checks OpenWrt and requir
 | `usr/share/rpcd/acl.d/uulink.json` → `uulink-agent.json` | Independent read-only ACL group for both methods |
 | `etc/init.d/uulink` | procd startup and crash restart |
 
+## Install or upgrade on U30 Air OpenWrt
+
+Connect to the router's Wi-Fi, open its terminal as `root` (for example, from a computer using SSH), then paste this one command **on the router**:
+
+```sh
+wget -O /tmp/uulink-setup.sh https://github.com/MichaelJiangg/UULink-OpenWrt-Agent/releases/download/v0.1.0-rc.1/setup.sh && [ "$(sha256sum /tmp/uulink-setup.sh | cut -d ' ' -f1)" = "aa236816f9be1d49f16305001716fcd018949b159f8cf3caaae6555422336791" ] && sh /tmp/uulink-setup.sh
+```
+
+The command verifies the downloaded installer; the installer verifies the plugin archive and chooses first installation or upgrade of the known earlier UULink agent. Return to UULink to check the plugin after it finishes. The U30 Air upgrade path has been tested on a router; first installation, reboot startup, and the App's authenticated `/ubus/` path still need device validation. The App does not execute this command itself.
+
 ## Release bundle preparation
 
-`build-release.py` creates a deterministic complete tarball, a generated `setup.sh`, and `SHA256SUMS`. The tarball includes only the eight files listed in the build script under `uulink-agent/`, including the MIT license; it does not contain the iOS project, Git history, local credentials, or build output. `release-setup.template.sh` is the source for the generated entry point. From this source directory, build into a new ignored `.build/` folder:
+`build-release.py` creates a deterministic complete tarball, a generated `setup.sh`, and `SHA256SUMS`. The tarball includes only the eight files listed in the build script under `uulink-agent/`, including the MIT license; it does not contain the iOS project, Git history, local credentials, or build output. `release-setup.template.sh` is the source for the generated entry point. To reproduce published `v0.1.0-rc.1` assets, check out that tag first; `main` may have newer documentation. From the source directory, build into a new ignored `.build/` folder:
 
 ```sh
 python3 build-release.py \
@@ -32,9 +42,9 @@ sh .build/uulink-agent-release/v0.1.0-rc.1/setup.sh --verify-only \
   .build/uulink-agent-release/v0.1.0-rc.1/uulink-agent-v0.1.0-rc.1.tar.gz
 ```
 
-The generated `setup.sh` contains the release version, the version-specific HTTPS bundle URL, and the bundle's SHA-256. It verifies the archive before extracting it, takes a temporary install lock, then explicitly chooses first installation or upgrade from the existing UULink files. An incomplete or unknown installation is refused, including unexpected symbolic links. The generated script can also verify a transferred local bundle; pass its path as the sole argument. It never downloads or executes wlmb-server code. Publish only the three generated files as Release assets after device validation. A private repository Release cannot serve as an anonymous router download.
+The generated `setup.sh` contains the release version, the version-specific HTTPS bundle URL, and the bundle's SHA-256. It verifies the archive before extracting it, takes a temporary install lock, then explicitly chooses first installation or upgrade from the existing UULink files. An incomplete or unknown installation is refused, including unexpected symbolic links. The generated script can also verify a transferred local bundle; pass its path as the sole argument. It never downloads or executes wlmb-server code. The public prerelease contains only the generated `setup.sh`, archive, and `SHA256SUMS` as assets.
 
-Once those files are published, users can copy the version-specific command printed by the builder into the router's shell. The command checks the downloaded `setup.sh` against its fixed SHA-256 before executing it; that script then checks the tarball against another fixed SHA-256. This detects changed release assets but is not a signature or an independent trust anchor. Use a computer SSH session; a LuCI web terminal is an option only when already installed. If GitHub is unreachable from the router, transfer the generated `setup.sh` and matching tarball by a trusted local method, verify them against `SHA256SUMS`, then run `sh setup.sh /tmp/uulink-agent-v0.1.0-rc.1.tar.gz`. The entry point uses the same pinned bundle digest for this offline path. No third-party download proxy or TLS bypass is included.
+The command above checks the downloaded `setup.sh` against its fixed SHA-256 before executing it; that script then checks the tarball against another fixed SHA-256. This detects changed release assets but is not a signature or an independent trust anchor. A LuCI web terminal is an option only when already installed. If GitHub is unreachable from the router, transfer the generated `setup.sh` and matching tarball by a trusted local method, verify them against `SHA256SUMS`, then run `sh setup.sh /tmp/uulink-agent-v0.1.0-rc.1.tar.gz`. The entry point uses the same pinned bundle digest for this offline path. No third-party download proxy or TLS bypass is included.
 
 This first release format copies files directly rather than registering an APK/IPK package. A firmware update may remove the service files; do not promise automatic preservation. The source is distributed under the MIT license.
 
@@ -42,7 +52,7 @@ This first release format copies files directly rather than registering an APK/I
 
 Installation changes OpenWrt service files and startup settings. Obtain the device owner's approval before running `install.sh` on the router. The script refuses existing target files, checks for `rpcd-mod-ucode` and other required components plus a working `mu300dash.status`, compiles the ucode sources without executing them, installs the files, restarts rpcd, starts the sampler, and waits for a versioned snapshot with both age values at most 10 seconds plus working on-demand details. If installation fails after files are written, it stops and disables its own service, removes only the files it just installed, and reloads rpcd if it had already been restarted. The new ACL is installed as `uulink-agent.json` with its own `uulink-agent` group; an existing `uulink.json` is left untouched. It does not change the firmware's modem, WiFi, DNS or firewall configuration. Restarting rpcd can invalidate the current `/ubus/` session; clients should log in again before checking the plugin.
 
-Run from a trusted local copy on the U30 Air as root:
+For manual source-tree installation, run from a trusted local copy on the U30 Air as root:
 
 ```sh
 sh install.sh
@@ -52,6 +62,6 @@ ubus call uulink details | grep '"available"'
 
 After the first successful `mu300dash.status` read, the snapshot response has `schema: 1`, `detailsVersion: 1`, a sanitized `status` object, `rates`, `statusAgeMs` and `rates.ageMs`. The two ages use the router's monotonic clock, so iPhone and router clock differences do not invalidate fresh data. Rate values are initially `null` until two valid counter samples are available. `sampledAtMs` and `statusAtMs` record the last successful status read for diagnostics; rewriting the cache does not advance them. The iOS client requires this plugin version and rejects stale or malformed snapshots instead of reading the old firmware interface directly.
 
-If the router already runs the earlier snapshot-only UULink agent, transfer this updated package to the router and run `sh upgrade.sh` **before installing the new App build**. The upgrade script accepts only the known earlier UULink plugin and ACL hashes, compiles the new plugin first, saves both previous files under `/root/uulink-upgrade.*`, replaces only those two files, restarts `rpcd`, and restores the previous files if the new method fails validation. It refuses unknown files and leaves the separate older `/usr/share/rpcd/acl.d/uulink.json` untouched. The original `install.sh` remains for first-time installation only.
+The published `setup.sh` automatically selects the upgrade path when it finds the known earlier snapshot-only UULink agent. For manual source-tree upgrades, transfer this package to the router and run `sh upgrade.sh` **before installing the new App build**. The upgrade script accepts only the known earlier UULink plugin and ACL hashes, compiles the new plugin first, saves both previous files under `/root/uulink-upgrade.*`, replaces only those two files, restarts `rpcd`, and restores the previous files if the new method fails validation. It refuses unknown files and leaves the separate older `/usr/share/rpcd/acl.d/uulink.json` untouched. The original `install.sh` remains for first-time manual installation only.
 
 Before using the plugin for production data, verify `ubus call mu300dash status` works locally, the root session can call `uulink.snapshot` and `uulink.details` over `/ubus/`, data age stays within the intended range, the device's battery drain is acceptable, and the service survives a reboot. Firmware updates may need the service files restored; check both ubus methods after every update. Do not expose `/ubus/` or a router management port to the public internet.
