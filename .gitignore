@@ -1,0 +1,14 @@
+.build/
+build/
+dist/
+node_modules/
+DerivedData/
+__pycache__/
+*.pyc
+.env*
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.codex/
+.agents/

@@ -1,0 +1,10 @@
+{
+  "uulink-agent": {
+    "description": "Read UULink's cached U30 Air status",
+    "read": {
+      "ubus": {
+        "uulink": ["snapshot", "details"]
+      }
+    }
+  }
+}
