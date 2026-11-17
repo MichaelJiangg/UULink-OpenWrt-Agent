@@ -1,5 +1,10 @@
 # ROADMAP
 
+## v0.3.0-rc.6 validation
+
+- A third-party F50 completed an upgrade from `rc.4`. Checks covered traffic totals, live rates, LuCI rendering, and authenticated IMEI reads. The iOS 1.2.0 snapshot parser read recorded output from this build.
+- The official U30 Air upgrade and V50 installation await device validation. Each prerelease uses its own pinned installer and archive checksum.
+
 ## Current stage
 
 - `v0.2.0-rc.1` is published as a prerelease at `https://github.com/MichaelJiangg/UULink-OpenWrt-Agent/releases/tag/v0.2.0-rc.1` and is installed on the test U30 Air. It adds `uulink.clients`, bounded Wi-Fi summary fields, on-demand LAN DHCP leases, and a LuCI entry under Services → UULink with four read-only sections: Overview, Network, Wi-Fi, and Settings/diagnostics. The older `v0.1.0-rc.1` release contains only the data agent.

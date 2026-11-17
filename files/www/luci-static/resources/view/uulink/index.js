@@ -20,12 +20,26 @@ function shown(value) {
 	return String(value);
 }
 
+function carrierName(operator) {
+	var name = typeof operator.name === 'string' ? operator.name.trim() : '';
+	if (name && !/^(--|unknown|null|n\/a)$/i.test(name))
+		return name;
+	// Keep these PLMN mappings in sync with the App's DeviceTelemetry.carrierName.
+	switch (operator.plmn) {
+	case '46000': case '46002': case '46004': case '46007': case '46008': return '中国移动';
+	case '46001': case '46006': case '46009': return '中国联通';
+	case '46003': case '46005': case '46011': case '46012': return '中国电信';
+	case '46015': return '中国广电';
+	default: return null;
+	}
+}
+
 function numberWithUnit(value, unit) {
 	var number = numeric(value);
 	return number == null ? '—' : String(number) + unit;
 }
 
-function bytes(value, perSecond) {
+function bytes(value, perSecond, trafficUnitBase) {
 	var number = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
 	if (numeric(number) == null || number < 0)
 		return '—';
@@ -33,11 +47,20 @@ function bytes(value, perSecond) {
 		return value + (perSecond ? ' B/s' : ' B');
 	var units = perSecond ? ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'] : ['B', 'KB', 'MB', 'GB', 'TB'];
 	var index = 0;
-	while (number >= 1000 && index < units.length - 1) {
-		number /= 1000;
+	var base = !perSecond && trafficUnitBase === 1000 ? 1000 : 1024;
+	while (number >= base && index < units.length - 1) {
+		number /= base;
 		index++;
 	}
-	return (index ? number.toFixed(1) : Math.round(number).toString()) + ' ' + units[index];
+	if (!perSecond && base === 1000) {
+		var rounded = Number(number.toFixed(index ? 2 : 0));
+		if (rounded >= 1000 && index < units.length - 1) {
+			rounded = 1;
+			index++;
+		}
+		return rounded + ' ' + units[index];
+	}
+	return (number >= 100 ? number.toFixed(0) : number.toFixed(1)) + ' ' + units[index];
 }
 
 function age(value) {
@@ -156,7 +179,7 @@ function network(snapshot) {
 	var traffic = object(object(status.info).traffic);
 	var children = [
 		section('蜂窝网络', '测量值与固件返回一致；缺失时不推测。', [
-			row('运营商', operator.name),
+			row('运营商', carrierName(operator)),
 			row('网络标识', operator.plmn),
 			row('网络制式代码', stale ? null : operator.act),
 			row('注册状态代码', stale ? null : object(radio.reg).stat),
@@ -168,8 +191,8 @@ function network(snapshot) {
 			row('信号数据年龄', numeric(status.sig_age) == null ? '—' : status.sig_age + ' 秒')
 		]),
 		section('流量与服务质量', '流量由固件提供，未返回的项目保持空白。', [
-			row('今日流量', bytes(traffic.today, false)),
-			row('当前账期流量', bytes(traffic.used, false)),
+			row('今日流量', bytes(traffic.today, false, traffic.unitBase)),
+			row('当前账期流量', bytes(traffic.used, false, traffic.unitBase)),
 			row('QCI', qos.qci),
 			row('签约下行', numberWithUnit(qos.dl, ' Mbps')),
 			row('签约上行', numberWithUnit(qos.ul, ' Mbps'))

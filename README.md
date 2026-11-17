@@ -69,3 +69,13 @@ After the first successful `mu300dash.status` read, the snapshot response has `s
 The current `setup.sh` automatically selects the upgrade path for the recognized snapshot-only agent and published `v0.1.0-rc.1` agent. For manual source-tree upgrades, transfer this package to the router and run `sh upgrade.sh`. The upgrade script verifies the installed core files before changing anything, installs the LuCI entry, and retains the current data agent when its files already match. If core files need replacement, it saves the previous plugin and ACL under `/root/uulink-upgrade.*`, restarts `rpcd`, and restores them if readiness fails. It refuses unknown or partial installations and leaves the separate older `/usr/share/rpcd/acl.d/uulink.json` untouched. The original `install.sh` remains for first-time manual installation only.
 
 Before using the plugin for production data, verify `ubus call mu300dash status` works locally, the root session can call `uulink.snapshot`, `uulink.details`, and `uulink.clients` over `/ubus/`, data age stays within the intended range, the device's battery drain is acceptable, and the service survives a reboot. Firmware updates may need the service files restored; check all three ubus methods after every update. Do not expose `/ubus/` or a router management port to the public internet.
+
+## v0.3.0-rc.6 prerelease
+
+This release preserves the schema 1 snapshot and updates traffic, speed, carrier naming and authenticated per-slot IMEI reads. Firmware support depends on the same `mu300dash` and OpenWrt prerequisites above. The upgrade was tested on an F50 with third-party firmware. U30 Air on official firmware and V50 await device validation for this build.
+
+Run the pinned `v0.3.0-rc.6` command from the router terminal as `root`:
+
+```sh
+wget -O /tmp/uulink-setup.sh https://github.com/MichaelJiangg/UULink-OpenWrt-Agent/releases/download/v0.3.0-rc.6/setup.sh && [ "$(sha256sum /tmp/uulink-setup.sh | cut -d ' ' -f1)" = "084caa9bb402ed97ff0551f0793daaeaf913687afcef6dfbc0f215a1fd5740e8" ] && sh /tmp/uulink-setup.sh
+```
