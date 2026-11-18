@@ -14,7 +14,7 @@ from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 BUILDER = AGENT_DIR / "build-release.py"
-VERSION = "v0.2.0-rc.1"
+VERSION = "v0.3.0-rc.4"
 REPO = "MichaelJiangg/UULink-OpenWrt-Agent"
 ARCHIVE_NAME = f"uulink-agent-{VERSION}.tar.gz"
 EXPECTED_FILES = {

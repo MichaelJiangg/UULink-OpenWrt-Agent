@@ -46,6 +46,7 @@ if [ ! -f "$init_source" ] || [ ! -f "$sampler_source" ] ||
 fi
 
 ucode -c -o /dev/null "$plugin_source"
+ucode -c -o /dev/null "$sampler_source"
 installed_init_hash=$(sha256sum /etc/init.d/uulink | cut -d ' ' -f 1)
 source_init_hash=$(sha256sum "$init_source" | cut -d ' ' -f 1)
 if [ "$installed_init_hash" != "$source_init_hash" ]; then
@@ -74,11 +75,22 @@ if [ "$menu_present" != "$view_present" ]; then
 fi
 source_menu_hash=$(sha256sum "$menu_source" | cut -d ' ' -f 1)
 source_view_hash=$(sha256sum "$view_source" | cut -d ' ' -f 1)
-if [ "$menu_present" = yes ] &&
-   { [ "$(sha256sum "$menu_target" | cut -d ' ' -f 1)" != "$source_menu_hash" ] ||
-     [ "$(sha256sum "$view_target" | cut -d ' ' -f 1)" != "$source_view_hash" ]; }; then
-    echo 'Unrecognized installed UULink LuCI page; nothing was changed.' >&2
-    exit 1
+ui_state=missing
+if [ "$menu_present" = yes ]; then
+    installed_menu_hash=$(sha256sum "$menu_target" | cut -d ' ' -f 1)
+    installed_view_hash=$(sha256sum "$view_target" | cut -d ' ' -f 1)
+    if [ "$installed_menu_hash" != "$source_menu_hash" ]; then
+        echo 'Unrecognized installed UULink LuCI page; nothing was changed.' >&2
+        exit 1
+    fi
+    if [ "$installed_view_hash" = "$source_view_hash" ]; then
+        ui_state=current
+    elif [ "$installed_view_hash" = 'ac01be903348c8ee4d78d587e65c58d74d07d480bc0421fa3c358e79c66241df' ]; then
+        ui_state=published_v02
+    else
+        echo 'Unrecognized installed UULink LuCI page; nothing was changed.' >&2
+        exit 1
+    fi
 fi
 
 agent_ready() {
@@ -154,26 +166,54 @@ source_sampler_hash=$(sha256sum "$sampler_source" | cut -d ' ' -f 1)
 installed_plugin_hash=$(sha256sum "$plugin_target" | cut -d ' ' -f 1)
 installed_acl_hash=$(sha256sum "$acl_target" | cut -d ' ' -f 1)
 installed_sampler_hash=$(sha256sum /usr/libexec/uulink/sampler.uc | cut -d ' ' -f 1)
-core_current=no
+published_v02_plugin_hash='7e6cdea1ff8345f7d8b6bb7588b1a58c9102fc8065ce42f407cb23d86d47f7df'
+core_mode=unknown
 if [ "$installed_plugin_hash" = "$source_plugin_hash" ] &&
    [ "$installed_acl_hash" = "$source_acl_hash" ] &&
    [ "$installed_sampler_hash" = "$source_sampler_hash" ]; then
-    core_current=yes
+    [ "$ui_state" = current ] || {
+        echo 'Incomplete UULink version; nothing was changed.' >&2
+        exit 1
+    }
+    core_mode=current
 elif { [ "$installed_plugin_hash" = 'e8d4cab08b853be6d0c343feba9f537c2739e80911faf0a79cbd52f4d44c34fc' ] &&
        [ "$installed_acl_hash" = 'afc7a8e75862a4e4ccd1b8b0e7dbded28f24bb4de458c6ba40c06d3ad7911d84' ]; } ||
      { [ "$installed_plugin_hash" = 'd72bae01a6def9c8c1d77182ee6a2f8a4f6e9f645a089345e8076d774b32cbfa' ] &&
        [ "$installed_acl_hash" = 'a48da02515324a58194f9222213e9f2ea588307f1afe185f7fe389a2e7633e45' ]; }; then
-    if [ "$installed_sampler_hash" != '69d37cbfcc6663afc1cdfde5d571aa31bed704b8876173b3666e889d5e905c98' ]; then
+    if [ "$installed_sampler_hash" != '69d37cbfcc6663afc1cdfde5d571aa31bed704b8876173b3666e889d5e905c98' ] ||
+       [ "$ui_state" != missing ]; then
         echo 'Unrecognized installed UULink sampler; nothing was changed.' >&2
         exit 1
     fi
-    core_current=no
-else
+    core_mode=full
+elif { [ "$installed_plugin_hash" = "$published_v02_plugin_hash" ] ||
+       [ "$installed_plugin_hash" = '2ebd073415907ba43f11af2ab1e211d1e825fe7765abfe93f2b1a8176f44de24' ]; } &&
+     [ "$installed_acl_hash" = 'dbf929c6b8fa3f76f5ac4b82adb58828cf6ec70ab3421aeedebea92cc63eef41' ] &&
+     [ "$installed_acl_hash" = "$source_acl_hash" ]; then
+    # An exact rc.3 or rc.4 installation only needs the updated details RPC.
+    if [ "$ui_state" = current ] &&
+       [ "$installed_init_hash" = 'a114381c48c14277406e8de06ff1b469eb40125530fa29d703d29fff8bcb09f3' ] &&
+       [ "$installed_menu_hash" = '628e11d667c3c68d3982fd2a35f79db4fe45aba3b1fab64b634a0b6c1d3b3159' ] &&
+       [ "$installed_view_hash" = '9517214620c0dd6bf819ee24c1975314f36701c1808630762b98472e5828b827' ] &&
+       [ "$installed_sampler_hash" = 'f817b1c9dc34d0767372355091f6ae02195a2941429c66b57245c7898cc0ca3c' ] &&
+       [ "$installed_sampler_hash" = "$source_sampler_hash" ]; then
+        core_mode=rpc
+    elif [ "$installed_plugin_hash" = "$published_v02_plugin_hash" ] && [ "$ui_state" = published_v02 ]; then
+        case "$installed_sampler_hash" in
+            a408a9e330cf2ed56ef7d68a70f0998cd1f9cd3dbe6ebddb460fd606b30d7a10|\
+            84ae744755fa8ed4fca22ed0b203593770ef50d5b7b0e719b4c8908b3212bffa|\
+            85602207f701a0efd7eca4413a44eaf25ba594ce38645f0b59078384745aa0df)
+                core_mode=legacy ;;
+        esac
+    fi
+fi
+
+if [ "$core_mode" = unknown ]; then
     echo 'Unrecognized installed UULink files; nothing was changed.' >&2
     exit 1
 fi
 
-if [ "$core_current" = yes ] && [ "$menu_present" = yes ]; then
+if [ "$core_mode" = current ]; then
     if agent_ready; then
         echo 'UULink agent is already up to date.'
         exit 0
@@ -188,16 +228,21 @@ if [ "$core_current" = yes ] && [ "$menu_present" = yes ]; then
     exit 1
 fi
 
-backup=''
-if [ "$core_current" = no ]; then
-    backup=$(mktemp -d /root/uulink-upgrade.XXXXXX)
+backup=$(mktemp -d /root/uulink-upgrade.XXXXXX)
+cp -p "$plugin_target" "$backup/uulink.uc"
+if [ "$core_mode" != rpc ]; then
     cp -p /usr/libexec/uulink/sampler.uc "$backup/sampler.uc"
-    cp -p "$plugin_target" "$backup/uulink.uc"
+fi
+if [ "$core_mode" = full ]; then
     cp -p "$acl_target" "$backup/uulink-agent.json"
+fi
+if [ "$ui_state" = published_v02 ]; then
+    cp -p "$view_target" "$backup/index.js"
 fi
 completed=no
 core_replaced=no
 ui_added=no
+ui_replaced=no
 clear_luci_cache() {
     rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache/* 2>/dev/null
 }
@@ -209,17 +254,28 @@ restore_on_failure() {
         if [ "$ui_added" = yes ]; then
             rm -f "$menu_target" "$view_target" || restored=no
             clear_luci_cache || restored=no
+        elif [ "$ui_replaced" = yes ]; then
+            cp -p "$backup/index.js" "$view_target" || restored=no
+            clear_luci_cache || restored=no
         fi
         if [ "$core_replaced" = yes ]; then
-            cp -p "$backup/sampler.uc" /usr/libexec/uulink/sampler.uc || restored=no
             cp -p "$backup/uulink.uc" "$plugin_target" || restored=no
-            cp -p "$backup/uulink-agent.json" "$acl_target" || restored=no
-            /etc/init.d/uulink restart || restored=no
+            if [ "$core_mode" != rpc ]; then
+                cp -p "$backup/sampler.uc" /usr/libexec/uulink/sampler.uc || restored=no
+            fi
+            if [ "$core_mode" = full ]; then
+                cp -p "$backup/uulink-agent.json" "$acl_target" || restored=no
+            fi
+            if [ "$core_mode" != rpc ]; then
+                /etc/init.d/uulink restart || restored=no
+            fi
             /etc/init.d/rpcd restart || restored=no
         fi
         if [ "$restored" = yes ]; then
             if [ "$core_replaced" = yes ]; then
                 echo "Upgrade failed; previous files restored from $backup" >&2
+            elif [ "$ui_replaced" = yes ]; then
+                echo "LuCI page update failed; previous page restored from $backup" >&2
             else
                 echo 'LuCI page installation failed; newly added files were removed.' >&2
             fi
@@ -241,19 +297,32 @@ if [ "$menu_present" = no ]; then
     [ "$(sha256sum "$menu_target" | cut -d ' ' -f 1)" = "$source_menu_hash" ]
     [ "$(sha256sum "$view_target" | cut -d ' ' -f 1)" = "$source_view_hash" ]
 fi
-if [ "$core_current" = no ]; then
-    core_replaced=yes
-    cp "$sampler_source" /usr/libexec/uulink/sampler.uc
-    cp "$plugin_source" "$plugin_target"
-    cp "$acl_source" "$acl_target"
-    chmod 0644 /usr/libexec/uulink/sampler.uc "$plugin_target" "$acl_target"
-    /etc/init.d/uulink restart
-    /etc/init.d/rpcd restart
+if [ "$ui_state" = published_v02 ]; then
+    ui_replaced=yes
+    cp "$view_source" "$view_target"
+    chmod 0644 "$view_target"
+    [ "$(sha256sum "$view_target" | cut -d ' ' -f 1)" = "$source_view_hash" ]
 fi
+core_replaced=yes
+cp "$plugin_source" "$plugin_target"
+chmod 0644 "$plugin_target"
+[ "$(sha256sum "$plugin_target" | cut -d ' ' -f 1)" = "$source_plugin_hash" ]
+if [ "$core_mode" != rpc ]; then
+    cp "$sampler_source" /usr/libexec/uulink/sampler.uc
+    chmod 0644 /usr/libexec/uulink/sampler.uc
+fi
+if [ "$core_mode" = full ]; then
+    cp "$acl_source" "$acl_target"
+    chmod 0644 "$acl_target"
+fi
+if [ "$core_mode" != rpc ]; then
+    /etc/init.d/uulink restart
+fi
+/etc/init.d/rpcd restart
 
 if wait_agent_ready; then
     completed=yes
-    if [ "$ui_added" = yes ] && ! clear_luci_cache; then
+    if { [ "$ui_added" = yes ] || [ "$ui_replaced" = yes ]; } && ! clear_luci_cache; then
         echo 'UULink is ready, but LuCI cache cleanup failed; the menu may remain stale.' >&2
     fi
     if [ "$core_replaced" = yes ]; then
