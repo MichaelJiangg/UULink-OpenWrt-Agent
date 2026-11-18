@@ -1,7 +1,7 @@
 'use strict';
 
 // Reported to the App through uulink.snapshot. Bump together with the App's expected version.
-const agentVersion = '0.3.0-rc.7';
+const agentVersion = '0.3.0-rc.8';
 
 import { popen, readfile, stat } from 'fs';
 import { connect } from 'ubus';

@@ -79,17 +79,13 @@ ui_state=missing
 if [ "$menu_present" = yes ]; then
     installed_menu_hash=$(sha256sum "$menu_target" | cut -d ' ' -f 1)
     installed_view_hash=$(sha256sum "$view_target" | cut -d ' ' -f 1)
-    if [ "$installed_menu_hash" != "$source_menu_hash" ]; then
-        echo 'Unrecognized installed UULink LuCI page; nothing was changed.' >&2
-        exit 1
-    fi
-    if [ "$installed_view_hash" = "$source_view_hash" ]; then
+    if [ "$installed_menu_hash" = "$source_menu_hash" ] && [ "$installed_view_hash" = "$source_view_hash" ]; then
         ui_state=current
     elif [ "$installed_view_hash" = 'ac01be903348c8ee4d78d587e65c58d74d07d480bc0421fa3c358e79c66241df' ]; then
         ui_state=published_v02
     else
-        echo 'Unrecognized installed UULink LuCI page; nothing was changed.' >&2
-        exit 1
+        # A complete but otherwise unknown LuCI page is backed up and replaced below.
+        ui_state=unknown
     fi
 fi
 
@@ -208,6 +204,16 @@ elif { [ "$installed_plugin_hash" = "$published_v02_plugin_hash" ] ||
     fi
 fi
 
+# A structurally complete but otherwise unknown build is still replaceable: every file that gets
+# overwritten is backed up first and restored if the readiness checks fail.
+if [ "$core_mode" = unknown ] &&
+   [ -f "$plugin_target" ] && [ ! -L "$plugin_target" ] &&
+   [ -f "$acl_target" ] && [ ! -L "$acl_target" ] &&
+   [ -f /usr/libexec/uulink/sampler.uc ] && [ ! -L /usr/libexec/uulink/sampler.uc ] &&
+   [ -f /etc/init.d/uulink ] && [ ! -L /etc/init.d/uulink ]; then
+    core_mode=full
+fi
+
 if [ "$core_mode" = unknown ]; then
     echo 'Unrecognized installed UULink files; nothing was changed.' >&2
     exit 1
@@ -238,6 +244,9 @@ if [ "$core_mode" = full ]; then
 fi
 if [ "$ui_state" = published_v02 ]; then
     cp -p "$view_target" "$backup/index.js"
+elif [ "$ui_state" = unknown ]; then
+    cp -p "$menu_target" "$backup/menu.json"
+    cp -p "$view_target" "$backup/index.js"
 fi
 completed=no
 core_replaced=no
@@ -255,6 +264,9 @@ restore_on_failure() {
             rm -f "$menu_target" "$view_target" || restored=no
             clear_luci_cache || restored=no
         elif [ "$ui_replaced" = yes ]; then
+            if [ -f "$backup/menu.json" ]; then
+                cp -p "$backup/menu.json" "$menu_target" || restored=no
+            fi
             cp -p "$backup/index.js" "$view_target" || restored=no
             clear_luci_cache || restored=no
         fi
@@ -301,6 +313,14 @@ if [ "$ui_state" = published_v02 ]; then
     ui_replaced=yes
     cp "$view_source" "$view_target"
     chmod 0644 "$view_target"
+    [ "$(sha256sum "$view_target" | cut -d ' ' -f 1)" = "$source_view_hash" ]
+fi
+if [ "$ui_state" = unknown ]; then
+    ui_replaced=yes
+    cp "$menu_source" "$menu_target"
+    cp "$view_source" "$view_target"
+    chmod 0644 "$menu_target" "$view_target"
+    [ "$(sha256sum "$menu_target" | cut -d ' ' -f 1)" = "$source_menu_hash" ]
     [ "$(sha256sum "$view_target" | cut -d ' ' -f 1)" = "$source_view_hash" ]
 fi
 core_replaced=yes
